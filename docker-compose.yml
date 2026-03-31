@@ -1,0 +1,131 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: microshop
+      POSTGRES_USER: shop_user
+      POSTGRES_PASSWORD: shop_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres-init/01-init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    networks:
+      - microshop-net
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - microshop-net
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - microshop-net
+
+  etcd:
+    image: bitnamilegacy/etcd:3.5.18-debian-12-r5
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://etcd:2379"
+    networks:
+      - microshop-net
+    volumes:
+      - etcd_data:/data
+
+  minio_init:
+    image: minio/mc
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:    
+      - ./infra/minio-init/init.sh:/init.sh:ro    
+      - ./infra/generated-images:/seed:ro    
+    entrypoint: /bin/sh /init.sh
+    depends_on:  
+      minio:  
+        condition: service_started
+    networks:
+      - microshop-net
+
+  minio:  
+    image: minio/minio  
+    expose:  
+      - "9000"  
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin 
+    command: server /data --console-address ":9001"  
+    volumes:  
+      - minio_data:/data  
+    networks:  
+     - microshop-net
+
+  auth-service:
+    build: ./auth-service-go
+    environment:
+      ETCD_ENDPOINTS: "etcd:2379"
+      REDIS_ADDR: "redis:6379"
+      SERVICE_PORT: "8081"
+    networks:
+      - microshop-net
+    depends_on:
+      - etcd
+      - redis
+
+  backend-service:
+    build: ./backend-java
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/microshop
+      SPRING_DATASOURCE_USERNAME: shop_user
+      SPRING_DATASOURCE_PASSWORD: shop_pass
+      SPRING_REDIS_HOST: redis
+      SPRING_RABBITMQ_HOST: rabbitmq
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    networks:
+      - microshop-net
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+      - minio
+
+  order-worker:
+    build: ./order-worker-python
+    environment:
+      DATABASE_URL: postgresql://shop_user:shop_pass@postgres:5432/microshop
+      RABBITMQ_HOST: rabbitmq
+    networks:
+      - microshop-net
+    depends_on:
+      - postgres
+      - rabbitmq
+
+  frontend:
+    build: ./frontend-react
+    networks:
+      - microshop-net
+
+  nginx-gateway:
+    build: ./nginx-gateway/
+    ports:
+      - "3000:80"
+    networks:
+      - microshop-net
+    depends_on:
+      - auth-service
+      - backend-service
+      - frontend
+      - minio
+
+networks:
+  microshop-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  etcd_data:
+  minio_data:
