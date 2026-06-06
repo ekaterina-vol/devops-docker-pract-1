@@ -12,8 +12,7 @@ class Handler(BaseHTTPRequestHandler):
 <html>
 <head><meta charset="utf-8"><title>Hello App</title></head>
 <body style="font-family:sans-serif; text-align:center; margin-top:100px;">
-  <h1>{NAME}</h1>
-  <p>Kubernetes app is running 🚀</p>
+  <h1>Hello, {NAME}!</h1>
 </body>
 </html>"""
         self.wfile.write(html.encode("utf-8"))
