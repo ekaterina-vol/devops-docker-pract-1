@@ -1,0 +1,21 @@
+app:
+  name: hello-app
+  image: ekaterinavol/k8s-hello-app-v2:latest
+  replicas: 1
+  env:
+    name: "Ekaterina"
+    dbHost: "hello-app-db-rw"
+    dbPort: "5432"
+    dbName: "appdb"
+    dbUser: "appuser"
+    dbPass: "apppassword"
+
+postgres:
+  name: hello-app-db
+  instances: 1
+  dbName: appdb
+  dbUser: appuser
+  dbPass: apppassword
+
+gateway:
+  host: hello-app.local
